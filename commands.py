@@ -299,15 +299,18 @@ class Remove(object):
                 return 'times must be of format M/T/W/R/F@00:00 (all times 24hr format and UTC)'
 
             if arg in val:
-                stype = val[arg]
                 del val[arg]
+            else:
+                return '%s not found in %s' % (arg, remove_type)
             client.config['channels'][channel][remove_type] = val
             client.config.flush()
-            return 'removed %s (%s) from %s' % (arg, stype, remove_type)
+            return 'removed %s (%s) from %s' % (arg, arg, remove_type)
 
         else:
             if arg in val:
                 del val[arg]
+            else:
+                return '%s not found in %s' % (arg, remove_type)
             client.config['channels'][channel][remove_type] = val
             client.config.flush()
             return 'removed %s from %s' % (arg, remove_type)

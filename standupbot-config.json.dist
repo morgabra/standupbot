@@ -3,13 +3,13 @@
         "##mychannel98": {
             "active": false, 
             "current_user": null, 
-            "high_score": 0.5499714334805806, 
-            "low_score": 0.16663283507029217, 
+            "high_score": 0.000, 
+            "low_score": 99999.0, 
             "notify": {
                 "blah": false
             }, 
             "started_at": null, 
-            "time": "* * * * *", 
+            "time": "30 18 * * 1,2,3,4,5", 
             "users": {
                 "morgabra": false, 
                 "test": false, 

@@ -8,8 +8,6 @@ import time
 import sys
 import os
 
-import argparse
-
 from commands import Commander, schedule_standup
 
 
@@ -170,16 +168,12 @@ def _validate_config(config):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='IRC bot for running agile-ish standups.')
-    parser.add_argument('--config', action='store', dest='config', default='./standupbot-config.json', help='Config file path (default: ./standupbot-config.json)')
-
-    args = parser.parse_args()
 
     # logging
     log.startLogging(sys.stdout)
 
     # load config
-    config = JSONStore(args.config)
+    config = JSONStore('./standupbot-config.json')
     valid, msg = _validate_config(config)
     if not valid:
         log.msg('Invalid config - missing fields: %s' % (', '.join(msg)))

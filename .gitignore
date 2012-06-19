@@ -1,4 +1,5 @@
 *.py[co]
+standupbot-config.json
 
 # Packages
 *.egg

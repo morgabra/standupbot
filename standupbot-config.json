@@ -3,24 +3,22 @@
         "##mychannel98": {
             "active": false, 
             "current_user": null, 
-            "started_at": null, 
-            "times": {
-                "F@11:45": "irc", 
-                "M@11:45": "irc", 
-                "R@11:45": "googleplus", 
-                "T@11:45": "googleplus", 
-                "W@11:45": "irc"
+            "high_score": 0.5499714334805806, 
+            "low_score": 0.16663283507029217, 
+            "notify": {
+                "blah": false
             }, 
+            "started_at": null, 
+            "time": "* * * * *", 
             "users": {
                 "morgabra": false, 
+                "test": false, 
                 "testuser1": false, 
                 "testuser2": false, 
-                "testuser3": false, 
-                "testuser4": false
+                "testuser3": false
             }
         }
     }, 
-    "google-hangout-gid": "771040692084", 
     "host": "irc.freenode.net", 
     "nick": "standupbot", 
     "port": 6667

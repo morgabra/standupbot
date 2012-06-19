@@ -1,22 +1,45 @@
 from twisted.python import log
-from twisted.internet import reactor
 
-import re
 import time
 import random
 
-TIME_REGEX = re.compile('[MTWRF]@\d\d:\d\d')
+from txscheduling.cron import CronSchedule
+from txscheduling.task import ScheduledCall
+
+SCHEDULES = {}
 
 
-class GooglePlus(object):
+def schedule_standup(client, channel, cron_string=None):
+    chan = client.config['channels'].get(channel)
+    if not chan:
+        log.msg('Channel %s not found in config, skipping standup check' % (channel))
+        return False
 
-    standup_type = 'googleplus'
+    if not cron_string:
+        cron_string = chan['time']
 
-    @classmethod
-    def run(cls, client, channel):
-        users = client.config['channels'][channel]['users']
-        client.msg(str(channel), str('%s: it\'s standup time!' % (': '.join(users))))
-        client.msg(str(channel), str('hangout link: https://hangoutsapi.talkgadget.google.com/hangouts?authuser=0&gid=%s' % (client.config['google-hangout-gid'])))
+    try:
+        cs = CronSchedule(cron_string)
+    except Exception as e:
+        log.msg("Exception parsing cron string '%s': %s" % (cron_string, e))
+
+    sc = SCHEDULES.get(channel)
+    if not sc:
+        sc = ScheduledCall(IRC.run, client, channel)
+
+    if sc.running:
+        sc.stop()
+
+    SCHEDULES[channel] = sc
+
+    try:
+        sc.start(cs)
+        client.config['channels'][channel]['time'] = cron_string
+        client.config.flush()
+        return True
+    except Exception as e:
+        log.msg('Standup could not be scheduled for time %s in channel %s: %s' % (cron_string, channel, e))
+    return False
 
 
 class IRC(object):
@@ -40,12 +63,13 @@ class IRC(object):
     def run(cls, client, channel):
         cls.cancel(client, channel)
         users = client.config['channels'][channel]['users']
+        notify = client.config['channels'][channel]['notify']
         user = random.choice(list(users.keys()))
         client.config['channels'][channel]['started_at'] = time.time()
         client.config['channels'][channel]['current_user'] = user
         client.config['channels'][channel]['active'] = True
         client.config.flush()
-        client.msg(str(channel), str('%s: it\'s standup time!' % (': '.join(users))))
+        client.msg(str(channel), str('%s: it\'s standup time!' % (': '.join(users.keys() + notify.keys()))))
         client.msg(str(channel), str('%s: you\'re up first (remember to tell me \'next\' when you are done)' % user))
 
     @classmethod
@@ -64,8 +88,25 @@ class IRC(object):
 
         started_at = client.config['channels'][channel]['started_at']
         current_time = time.time()
-        time_taken = '%.02f' % ((int(current_time) - started_at) / 60)
-        client.msg(str(channel), str('standup DONE! (total time: %s)' % time_taken))
+        time_taken = ((int(current_time) - started_at) / 60.0)
+        high_score = client.config['channels'][channel]['high_score']
+        low_score = client.config['channels'][channel]['low_score']
+
+        skipped = []
+        for user, done in users.items():
+            if done == 'skipped':
+                skipped.append(user)
+
+        client.msg(str(channel), str('standup DONE! (total time: %.03f minutes high:%.03f low:%.03f)' % (time_taken, high_score, low_score)))
+        client.msg(str(channel), str('skipped: %s' % ', '.join(skipped)))
+        if time_taken > high_score:
+            client.config['channels'][channel]['high_score'] = time_taken
+            client.msg(str(channel), str('OHNO! New high score! D: (old: %.03f minutes new:%.03f minutes)' % (high_score, time_taken)))
+        if time_taken < low_score:
+            client.config['channels'][channel]['low_score'] = time_taken
+            client.msg(str(channel), str('WOO! New low score! :D (old: %.03f minutes new:%.03f minutes)' % (low_score, time_taken)))
+
+        client.config.flush()
         IRC.cancel(client, channel)
 
 
@@ -75,7 +116,7 @@ class Join(object):
 
     @classmethod
     def help(cls):
-        return 'join <chan>: have the bot join the give channel'
+        return 'join <chan>: have the bot join the given channel'
 
     @classmethod
     def do_command(cls, client, user, channel, args):
@@ -91,13 +132,15 @@ class Join(object):
             "active": False,
             "current_user": None,
             "started_at": None,
-            "times": {},
-            "users": {}
+            "time": "",
+            "users": {},
+            "notify": {},
+            "high_score": 0.00,
+            "low_score": 0.00
         }
         client.config['channels'][args] = new_channel
         client.config.flush()
         client.join(str(args))
-        reactor.callLater(60, client.commander.check_standup_time, client, args)
         return 'joining %s' % (args)
 
 
@@ -146,14 +189,11 @@ class Start(object):
 
     @classmethod
     def help(cls):
-        return 'usage: start <type> - start an unscheduled standup'
+        return 'usage: start - start an unscheduled standup'
 
     @classmethod
     def do_command(cls, client, user, channel, args):
-        if args == 'googleplus':
-            GooglePlus.run(client, channel)
-        elif args == 'irc':
-            IRC.run(client, channel)
+        IRC.run(client, channel)
 
 
 class Reset(object):
@@ -186,7 +226,7 @@ class Next(object):
 
         current_user = client.config['channels'][channel]['current_user']
         if args == 'force':
-            client.config['channels'][channel]['users'][current_user] = True
+            client.config['channels'][channel]['users'][current_user] = 'skipped'
             client.config.flush()
             IRC.check(client, channel)
         else:
@@ -196,13 +236,30 @@ class Next(object):
                 IRC.check(client, channel)
 
 
-class List(object):
-
-    command = 'list'
+class Settime(object):
+    command = 'settime'
 
     @classmethod
     def help(cls):
-        return "usage: 'list (users, times)' - list users/standup time currently configured"
+        return "usage: 'settime <cronstring>' - set the standup time"
+
+    @classmethod
+    def do_command(cls, client, user, channel, args):
+        cron_string = args
+        success = schedule_standup(client, channel, cron_string=cron_string)
+        if success:
+            return 'standup time: %s' % (cron_string)
+        else:
+            return 'failed setting standup time to %s' % (cron_string)
+
+
+class Show(object):
+
+    command = 'show'
+
+    @classmethod
+    def help(cls):
+        return "usage: 'show (users, time, notify)' - show users/standup time/notified users currently configured"
 
     @classmethod
     def do_command(cls, client, user, channel, args):
@@ -212,12 +269,58 @@ class List(object):
         if val == None:
             return cls.help()
 
-        if list_type == 'times':
-            val = ["%s (%s)" % (stime, stype) for stime, stype in val.items()]
-        else:
+        if list_type == 'users' or list_type == 'notify':
             val = ["%s" % user for user, active in val.items()]
+        else:
+            val = [val]
 
         return 'standup %s: %s' % (list_type, ', '.join(val))
+
+
+class Notify(object):
+
+    command = 'notify'
+
+    @classmethod
+    def help(cls):
+        return "usage: 'notify <nick>' - notify non-participant of standup"
+
+    @classmethod
+    def do_command(cls, client, user, channel, args):
+        notify = args
+
+        notified = client.config['channels'][channel].get('notify')
+
+        if notify not in notified:
+            notified[notify] = False
+            client.config['channels'][channel]['notify'] = notified
+            client.config.flush()
+            return 'added %s to notify list' % (notify)
+        else:
+            return '%s already on notify list' % (notify)
+
+
+class Unnotify(object):
+
+    command = 'unnotify'
+
+    @classmethod
+    def help(cls):
+        return "usage: 'unnotify <nick>' - remove user from notification list"
+
+    @classmethod
+    def do_command(cls, client, user, channel, args):
+        notify = args
+
+        notified = client.config['channels'][channel].get('notify')
+
+        if notify in notified:
+            del notified[notify]
+            client.config['channels'][channel]['notify'] = notified
+            client.config.flush()
+            return 'removed %s from notify list' % (notify)
+        else:
+            return '%s not on notify list' % (notify)
 
 
 class Add(object):
@@ -226,51 +329,21 @@ class Add(object):
 
     @classmethod
     def help(cls):
-        return "usage: 'add (user, time) <argument>' - add user/time to standup"
+        return "usage: 'add <nick>' - add user to standup"
 
     @classmethod
     def do_command(cls, client, user, channel, args):
-        args = args.strip().split(' ', 1)
-        if len(args) == 2:
-            add_type = args[0] + 's'
-            arg = args[1]
-        else:
-            return cls.help()
+        user = args
 
-        val = client.config['channels'][channel].get(add_type)
-        if val == None:
-            return cls.help()
+        users = client.config['channels'][channel].get('users')
 
-        if add_type == 'times':
-            arg = arg.strip().split(' ', 1)
-            if len(arg) == 2:
-                stime = arg[0]
-                stype = arg[1]
-            else:
-                return cls.help()
-
-            if not TIME_REGEX.match(stime):
-                return 'times must be of format M/T/W/R/F@00:00 (all times 24hr format and UTC)'
-            if not stype in ('googleplus', 'irc'):
-                return 'type must be googleplus or irc'
-
-            for ctime, ctype in val.items():
-                if ctime == stime:
-                    return 'already added %s to %s' % (stime, add_type)
-
-            val[stime] = stype
-            client.config['channels'][channel][add_type] = val
+        if user not in users:
+            users[user] = False
+            client.config['channels'][channel]['users'] = users
             client.config.flush()
-            return 'added %s (%s) to %s' % (stime, stype, add_type)
-
+            return 'added %s to standup' % (user)
         else:
-            if arg in val:
-                return 'already added %s to %s' % (arg, add_type)
-
-            val[arg] = False
-            client.config['channels'][channel][add_type] = val
-            client.config.flush()
-            return 'added %s to %s' % (arg, add_type)
+            return '%s already part of this standup' % (user)
 
 
 class Remove(object):
@@ -279,75 +352,25 @@ class Remove(object):
 
     @classmethod
     def help(cls):
-        return "usage: 'remove (user, time) <argument>' - remove user/time to standup"
+        return "usage: 'remove <nick>' - remove user from standup"
 
     @classmethod
     def do_command(cls, client, user, channel, args):
-        args = args.strip().split(' ', 1)
-        if len(args) == 2:
-            remove_type = args[0] + 's'
-            arg = args[1]
-        else:
-            return cls.help()
+        user = args
 
-        val = client.config['channels'][channel].get(remove_type)
-        if val == None:
-            return cls.help()
+        users = client.config['channels'][channel].get('users')
 
-        if remove_type == 'times':
-            if not TIME_REGEX.match(arg):
-                return 'times must be of format M/T/W/R/F@00:00 (all times 24hr format and UTC)'
-
-            if arg in val:
-                del val[arg]
-            else:
-                return '%s not found in %s' % (arg, remove_type)
-            client.config['channels'][channel][remove_type] = val
+        if user in users:
+            del users[user]
+            client.config['channels'][channel]['users'] = users
             client.config.flush()
-            return 'removed %s (%s) from %s' % (arg, arg, remove_type)
-
+            return 'removed %s from standup' % (user)
         else:
-            if arg in val:
-                del val[arg]
-            else:
-                return '%s not found in %s' % (arg, remove_type)
-            client.config['channels'][channel][remove_type] = val
-            client.config.flush()
-            return 'removed %s from %s' % (arg, remove_type)
+            return '%s already removed from standup' % (user)
 
 
 class Commander(object):
-    COMMANDS = [List, Add, Remove, Start, Next, Reset, Status, Join, Leave]
-    STANDUP_HOOKS = [GooglePlus, IRC]
-    WEEKDAY_MAP = {'1': 'M', '2': 'T', '3': 'W', '4': 'R', '5': 'F'}
-
-    def check_standup_time(self, client, channel):
-        chan = client.config['channels'].get(channel)
-        if not chan:
-            log.msg('Channel %s not found in config, skipping standup check' % (channel))
-            return
-
-        times = client.config['channels'][channel]['times']
-        current_day = time.strftime('%w')
-        current_time = time.strftime('%H:%M')
-
-        formatted_time = '%s@%s' % (self.WEEKDAY_MAP[current_day], current_time)
-        log.msg('checking if it\'s time for standup in %s (%s)' % (channel, formatted_time))
-        run_standup = False
-
-        for standup_time, standup_type in times.items():
-            if formatted_time == standup_time:
-                run_standup = True
-
-        if run_standup:
-            log.msg('it\'s standup time in %s! (%s)' % (channel, standup_type))
-            for s in self.STANDUP_HOOKS:
-                if standup_type == s.standup_type:
-                    s.run(client, channel)
-        else:
-            log.msg('not standup time in %s.' % (channel))
-
-        reactor.callLater(60, self.check_standup_time, client, channel)
+    COMMANDS = [Notify, Unnotify, Show, Settime, Add, Remove, Start, Next, Reset, Status, Join, Leave]
 
     def run_command(self, client, user, channel, command):
         log.msg('parsing command from %s: %s' % (user, command))

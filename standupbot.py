@@ -10,7 +10,7 @@ import os
 
 import argparse
 
-from commands import Commander
+from commands import Commander, schedule_standup
 
 
 class JSONStore(dict):
@@ -75,7 +75,6 @@ class JSONStore(dict):
 
 
 class StandupBot(irc.IRCClient):
-    """A logging IRC bot."""
 
     @property
     def config(self):
@@ -93,7 +92,7 @@ class StandupBot(irc.IRCClient):
         """Called when bot has succesfully signed on to server."""
         for channel, data in self.config['channels'].iteritems():
             self.join(str(channel))
-            reactor.callLater(60, self.commander.check_standup_time, self, channel)
+            schedule_standup(self, channel)
 
     def joined(self, channel):
         """This will get called when the bot joins the channel."""

@@ -38,7 +38,7 @@ class JSONStore(dict):
         self._flush_cache()
 
     def _open(self, mode):
-        return os.fdopen(os.open(self._path, os.O_RDWR | os.O_EXLOCK | os.O_CREAT), mode)
+        return os.fdopen(os.open(self._path, os.O_RDWR | os.O_CREAT), mode)
 
     def _fill_cache(self):
         log.msg('Loading conf from "%s"' % (self._path))

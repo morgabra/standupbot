@@ -99,10 +99,10 @@ class IRC(object):
 
         client.msg(str(channel), str('standup DONE! (total time: %.03f minutes high:%.03f low:%.03f)' % (time_taken, high_score, low_score)))
         client.msg(str(channel), str('skipped: %s' % ', '.join(skipped)))
-        if time_taken > high_score:
+        if time_taken > high_score or not high_score:
             client.config['channels'][channel]['high_score'] = time_taken
             client.msg(str(channel), str('OHNO! New high score! D: (old: %.03f minutes new:%.03f minutes)' % (high_score, time_taken)))
-        if time_taken < low_score:
+        if time_taken < low_score or not low_score:
             client.config['channels'][channel]['low_score'] = time_taken
             client.msg(str(channel), str('WOO! New low score! :D (old: %.03f minutes new:%.03f minutes)' % (low_score, time_taken)))
 
@@ -177,10 +177,29 @@ class Status(object):
             current_user = client.config['channels'][channel]['current_user']
             started_at = client.config['channels'][channel]['started_at']
             current_time = time.time()
-            time_taken = '%.02f' % ((int(current_time) - started_at) / 60)
+            time_taken = '%.03f' % ((int(current_time) - started_at) / 60)
             return 'active standup user: %s total time: %s minutes' % (current_user, time_taken)
         else:
             return 'no active standup'
+
+
+class Scores(object):
+
+    command = 'scores'
+
+    @classmethod
+    def help(cls):
+        return 'usage: scores - shows current standup scores'
+
+    @classmethod
+    def do_command(cls, client, user, channel, args):
+        high_score = client.config['channels'][channel]['high_score']
+        low_score = client.config['channels'][channel]['low_score']
+
+        high_score = "%.03f" % high_score if high_score else 'N/A'
+        low_score = "%.03f" % low_score if low_score else 'N/A'
+
+        return 'standup scores: high:%s low:%s' % (high_score, low_score)
 
 
 class Start(object):
@@ -370,7 +389,7 @@ class Remove(object):
 
 
 class Commander(object):
-    COMMANDS = [Notify, Unnotify, Show, Settime, Add, Remove, Start, Next, Reset, Status, Join, Leave]
+    COMMANDS = [Scores, Notify, Unnotify, Show, Settime, Add, Remove, Start, Next, Reset, Status, Join, Leave]
 
     def run_command(self, client, user, channel, command):
         log.msg('parsing command from %s: %s' % (user, command))

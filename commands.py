@@ -25,6 +25,7 @@ def schedule_standup(client, channel, cron_string=None):
 
     sc = SCHEDULES.get(channel)
     if not sc:
+        log.msg('Creating new scheduledcall for channel %s @ %s' % (channel, cron_string))
         sc = ScheduledCall(IRC.run, client, channel)
 
     if sc.running:
@@ -36,6 +37,7 @@ def schedule_standup(client, channel, cron_string=None):
         sc.start(cs)
         client.config['channels'][channel]['time'] = cron_string
         client.config.flush()
+        log.msg('schedule started for channel %s @ %s' % (channel, cron_string))
         return True
     except Exception as e:
         log.msg('Standup could not be scheduled for time %s in channel %s: %s' % (cron_string, channel, e))
@@ -61,6 +63,7 @@ class IRC(object):
 
     @classmethod
     def run(cls, client, channel):
+        log.msg('running standup in %s' % channel)
         cls.cancel(client, channel)
         users = client.config['channels'][channel]['users']
         notify = client.config['channels'][channel]['notify']

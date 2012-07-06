@@ -1,7 +1,7 @@
 standupbot
 ==========
 
-standupbot will keep track of who is in standups and what time they are and will either run the IRC standup or provide you a google+ hangout link automatically.
+standupbot will keep track of who is in standups and what time they are and will run the IRC standup.
 
 ### usage
 

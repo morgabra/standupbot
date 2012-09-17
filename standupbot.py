@@ -59,12 +59,12 @@ class JSONStore(dict):
         log.msg('Flushing conf to "%s"' % (self._path))
         f = None
         try:
-            conf = json.dumps(self._cache, sort_keys=True, indent=4)
+            conf = json.dumps(self._cache, indent=4)
             f = self._open('w')
             f.truncate()
             f.write(conf)
         except Exception as e:
-            log.msg('Writing conf to "%s" failed: %s' % (self._path, e))
+            log.msg('Flushing conf to "%s" failed: %s' % (self._path, e))
             if reactor.running:
                 reactor.stop()
         finally:
@@ -77,6 +77,10 @@ class StandupBot(irc.IRCClient):
     @property
     def config(self):
         return self.factory.config
+
+    def sendmsg(self, channel, message):
+        self.msg(channel.encode('utf8') if type(message) is unicode else channel, 
+                 message.encode('utf8') if type(message) is unicode else message)
 
     def connectionMade(self):
         irc.IRCClient.connectionMade(self)
@@ -98,6 +102,7 @@ class StandupBot(irc.IRCClient):
 
     def privmsg(self, user, channel, msg):
         """This will get called when the bot receives a message."""
+        msg = msg.decode('utf8')
         user = user.split('!', 1)[0]
         log.msg("<%s> %s" % (user, msg))
 

@@ -1,7 +1,6 @@
 from twisted.python import log
 
 import time
-import random
 
 from txscheduling.cron import CronSchedule
 from txscheduling.task import ScheduledCall
@@ -67,13 +66,13 @@ class IRC(object):
         cls.cancel(client, channel)
         users = client.config['channels'][channel]['users']
         notify = client.config['channels'][channel]['notify']
-        user = random.choice(list(users.keys()))
+        user = list(users.keys())[0]
         client.config['channels'][channel]['started_at'] = time.time()
         client.config['channels'][channel]['current_user'] = user
         client.config['channels'][channel]['active'] = True
         client.config.flush()
-        client.msg(str(channel), str('%s: it\'s standup time!' % (': '.join(users.keys() + notify.keys()))))
-        client.msg(str(channel), str('%s: you\'re up first (remember to tell me \'next\' when you are done)' % user))
+        client.sendmsg(channel, '%s: it\'s standup time!' % (': '.join(users.keys() + notify.keys())))
+        client.sendmsg(channel, '%s: you\'re up first (remember to tell me \'next\' when you are done)' % user)
 
     @classmethod
     def check(cls, client, channel):
@@ -86,7 +85,7 @@ class IRC(object):
                 for user, done in users.items():
                     if not done:
                         client.config['channels'][channel]['current_user'] = user
-                        client.msg(str(channel), str('%s: you\'re up next (remember to tell me \'next\' when you are done)' % user))
+                        client.sendmsg(channel, '%s: you\'re up next (remember to tell me \'next\' when you are done)' % user)
                         return
 
         started_at = client.config['channels'][channel]['started_at']
@@ -100,14 +99,14 @@ class IRC(object):
             if done == 'skipped':
                 skipped.append(user)
 
-        client.msg(str(channel), str('standup DONE! (total time: %.03f minutes high:%.03f low:%.03f)' % (time_taken, high_score, low_score)))
-        client.msg(str(channel), str('skipped: %s' % ', '.join(skipped)))
+        client.sendmsg(channel, 'standup DONE! (total time: %.03f minutes high:%.03f low:%.03f)' % (time_taken, high_score, low_score))
+        client.sendmsg(channel, 'skipped: %s' % ', '.join(skipped))
         if time_taken > high_score or not high_score:
             client.config['channels'][channel]['high_score'] = time_taken
-            client.msg(str(channel), str('OHNO! New high score! D: (old: %.03f minutes new:%.03f minutes)' % (high_score, time_taken)))
+            client.sendmsg(channel, 'OHNO! New high score! D: (old: %.03f minutes new:%.03f minutes)' % (high_score, time_taken))
         if time_taken < low_score or not low_score:
             client.config['channels'][channel]['low_score'] = time_taken
-            client.msg(str(channel), str('WOO! New low score! :D (old: %.03f minutes new:%.03f minutes)' % (low_score, time_taken)))
+            client.sendmsg(channel, 'WOO! New low score! :D (old: %.03f minutes new:%.03f minutes)' % (low_score, time_taken))
 
         client.config.flush()
         IRC.cancel(client, channel)
@@ -292,12 +291,11 @@ class Show(object):
             return cls.help()
 
         if list_type == 'users' or list_type == 'notify':
-            val = ["%s" % user for user, active in val.items()]
+            val = val.keys()
         else:
             val = [val]
 
         return 'standup %s: %s' % (list_type, ', '.join(val))
-
 
 class Notify(object):
 
@@ -414,7 +412,7 @@ class Commander(object):
             response = self.get_help(args)
 
         if response:
-            client.msg(str(channel), str(response))
+            client.sendmsg(channel, response)
 
     def get_help(self, command):
         response = None

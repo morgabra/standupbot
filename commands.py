@@ -393,8 +393,6 @@ class Commander(object):
     COMMANDS = [Scores, Notify, Unnotify, Show, Settime, Add, Remove, Start, Next, Reset, Status, Join, Leave]
 
     def run_command(self, client, user, channel, command):
-        log.msg('parsing command from %s: %s' % (user, command))
-
         command = command.split(' ', 1)
         args = ''
         if len(command) > 1:

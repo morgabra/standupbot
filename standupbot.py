@@ -102,7 +102,6 @@ class StandupBot(irc.IRCClient):
 
     def privmsg(self, user, channel, msg):
         """This will get called when the bot receives a message."""
-        msg = msg.decode('utf8')
         user = user.split('!', 1)[0]
         log.msg("<%s> %s" % (user, msg))
 
@@ -114,6 +113,9 @@ class StandupBot(irc.IRCClient):
             msg = msg[len(self.nickname + ":"):]
             msg = msg.strip()
 
+            log.msg('parsing command from %s: %s' % (user, msg))
+
+            msg = msg.decode('utf8')
             self.commander.run_command(self, user, channel, msg)
 
     def action(self, user, channel, msg):
